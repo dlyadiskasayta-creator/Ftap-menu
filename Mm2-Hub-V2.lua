@@ -1,5 +1,5 @@
--- MM2 Pentest Script v5 - Delta Executor (Android)
--- Safe Drawing wrapper: all features preserved, GUI always boots
+-- MM2 Pentest Script v6 - Part 1/3
+-- Services, Drawing wrapper, language, config, roles, ESP
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -9,7 +9,6 @@ local LocalPlayer = Players.LocalPlayer
 
 -- ==================== SAFE DRAWING WRAPPER ====================
 local DrawingAvailable = (type(Drawing) == "table" and type(Drawing.new) == "function")
-local DrawingObjects = {}
 
 local function NewDrawing(class, props)
     if not DrawingAvailable then return nil end
@@ -20,7 +19,6 @@ local function NewDrawing(class, props)
             pcall(function() obj[k] = v end)
         end
     end
-    table.insert(DrawingObjects, obj)
     return obj
 end
 
@@ -105,20 +103,46 @@ local ActiveTarget = nil
 local UIRefs = {}
 local MobileAimbotBtn = nil
 local LastRoleCache = {}
+local NoclipConn = nil
 
--- ==================== ROLE ====================
+-- ==================== ROLE DETECTION (substring, lowercase) ====================
+local function toolMatches(tool, patterns)
+    if not tool or not tool.Name then return false end
+    local n = string.lower(tool.Name)
+    for _, p in ipairs(patterns) do
+        if string.find(n, p, 1, true) then return true end
+    end
+    return false
+end
+
+local function playerHasTool(player, patterns)
+    if not player then return false end
+    local char = player.Character
+    local backpack = player:FindFirstChild("Backpack")
+
+    if backpack then
+        for _, tool in ipairs(backpack:GetChildren()) do
+            if toolMatches(tool, patterns) then return true end
+        end
+    end
+    if char then
+        for _, tool in ipairs(char:GetChildren()) do
+            if toolMatches(tool, patterns) then return true end
+        end
+    end
+    return false
+end
+
 local function GetPlayerRole(player)
     if not player or not player.Parent then return "Innocent" end
-    local char = player.Character
-    if not char then return "Innocent" end
-    local function checkTool(name)
-        local bp = player:FindFirstChild("Backpack")
-        if bp then for _, t in ipairs(bp:GetChildren()) do if t.Name == name then return true end end end
-        for _, t in ipairs(char:GetChildren()) do if t.Name == name then return true end end
-        return false
+    if not player.Character then return "Innocent" end
+
+    if playerHasTool(player, {"knife", "knifestand", "dagger", "blade"}) then
+        return "Murderer"
     end
-    if checkTool("Knife") or checkTool("KnifeStand") then return "Murderer" end
-    if checkTool("Gun") or checkTool("Revolver") or checkTool("Colt") then return "Sheriff" end
+    if playerHasTool(player, {"gun", "revolver", "colt", "pistol", "handgun"}) then
+        return "Sheriff"
+    end
     return "Innocent"
 end
 
@@ -132,7 +156,7 @@ end
 local function CleanupPlayer(player)
     if ESPObjects[player] then
         for _, obj in pairs(ESPObjects[player]) do
-            if obj and obj.Parent then obj:Destroy() end
+            if typeof(obj) == "Instance" and obj.Parent then obj:Destroy() end
         end
         ESPObjects[player] = nil
     end
@@ -141,6 +165,7 @@ end
 local function ApplyESP(player)
     if player == LocalPlayer then return end
     if not player.Character then return end
+
     local char = player.Character
     local humanoid = char:FindFirstChildOfClass("Humanoid")
     local head = char:FindFirstChild("Head")
@@ -149,8 +174,18 @@ local function ApplyESP(player)
 
     local role = GetPlayerRole(player)
     local color = GetRoleColor(role)
-    local cacheKey = role .. "|" .. tostring(Config.HighlightEnabled) .. "|" .. tostring(Config.NamesEnabled) .. "|" .. tostring(Config.RolesEnabled)
-    if ESPObjects[player] and ESPObjects[player]._cacheKey == cacheKey then return end
+
+    local cacheKey = string.format("%s|%s|%s|%s|%s",
+        role,
+        tostring(Config.HighlightEnabled),
+        tostring(Config.NamesEnabled),
+        tostring(Config.RolesEnabled),
+        tostring(player.DisplayName)
+    )
+
+    if ESPObjects[player] and ESPObjects[player]._cacheKey == cacheKey then
+        return
+    end
 
     CleanupPlayer(player)
     ESPObjects[player] = { _cacheKey = cacheKey }
@@ -209,6 +244,8 @@ local function ForceRefreshESP()
     LastRoleCache = {}
     UpdateAllESP()
 end
+-- MM2 Pentest Script v6 - Part 2/3
+-- Tracers, FOV circle, aimbot, teleports, noclip
 
 -- ==================== TRACERS ====================
 local function UpdateTracers()
@@ -273,12 +310,18 @@ end
 -- ==================== AIMBOT ====================
 local function HasLineOfSight(targetChar)
     if not Config.AimbotWallCheck then return true end
+    if not targetChar then return false end
     local head = targetChar:FindFirstChild("Head")
     if not head then return false end
+
     local params = RaycastParams.new()
     params.FilterDescendantsInstances = {LocalPlayer.Character, Camera}
     params.FilterType = Enum.RaycastFilterType.Exclude
-    local result = workspace:Raycast(Camera.CFrame.Position, head.Position - Camera.CFrame.Position, params)
+
+    local origin = Camera.CFrame.Position
+    local direction = head.Position - origin
+    local result = workspace:Raycast(origin, direction, params)
+
     if result == nil then return true end
     return result.Instance:IsDescendantOf(targetChar)
 end
@@ -288,14 +331,19 @@ local function IsValidTarget(player)
     if not player.Character then return false end
     local hum = player.Character:FindFirstChildOfClass("Humanoid")
     local head = player.Character:FindFirstChild("Head")
-    if not hum or not head or hum.Health <= 0 then return false end
+    if not hum or not head or not head.Parent then return false end
+    if hum.Health <= 0 then return false end
+
     local role = GetPlayerRole(player)
     if Config.AimbotRole ~= "All" and Config.AimbotRole ~= role then return false end
+
     local sp, onScreen = Camera:WorldToViewportPoint(head.Position)
     if not onScreen then return false end
+
     local center = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
     local dist = (Vector2.new(sp.X, sp.Y) - center).Magnitude
     if dist > Config.AimbotFOV then return false end
+
     if not HasLineOfSight(player.Character) then return false end
     return true
 end
@@ -303,31 +351,39 @@ end
 local function GetClosestTarget()
     local closest, closestDist = nil, math.huge
     local center = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
+
     for _, p in ipairs(Players:GetPlayers()) do
         if IsValidTarget(p) then
-            local head = p.Character:FindFirstChild("Head")
-            local sp = Camera:WorldToViewportPoint(head.Position)
-            local dist = (Vector2.new(sp.X, sp.Y) - center).Magnitude
-            if dist < closestDist then closestDist = dist closest = p end
+            local head = p.Character and p.Character:FindFirstChild("Head")
+            if head and head.Parent then
+                local sp = Camera:WorldToViewportPoint(head.Position)
+                local dist = (Vector2.new(sp.X, sp.Y) - center).Magnitude
+                if dist < closestDist then closestDist = dist closest = p end
+            end
         end
     end
     return closest
 end
 
 local function UpdateAimbot()
-    if not Config.AimbotEnabled then ActiveTarget = nil return end
+    if not Config.AimbotEnabled then
+        ActiveTarget = nil
+        return
+    end
+
     local target = GetClosestTarget()
     ActiveTarget = target
+
     if target and target.Character then
         local head = target.Character:FindFirstChild("Head")
-        if head then
+        if head and head.Parent then
             local targetCF = CFrame.new(Camera.CFrame.Position, head.Position)
             Camera.CFrame = Camera.CFrame:Lerp(targetCF, Config.AimbotSmoothness)
         end
     end
 end
 
--- ==================== TP ====================
+-- ==================== TELEPORT ====================
 local function TeleportToPlayer(tp)
     if not tp or not tp.Character then return end
     local myChar = LocalPlayer.Character
@@ -338,17 +394,29 @@ local function TeleportToPlayer(tp)
 end
 
 local function TeleportToGun()
+    local found = nil
     for _, obj in ipairs(workspace:GetDescendants()) do
-        if obj:IsA("Tool") and (obj.Name=="Gun" or obj.Name=="Revolver" or obj.Name=="Colt") then
-            local h = obj:FindFirstChild("Handle")
-            if h then
-                local myChar = LocalPlayer.Character
-                if myChar then
-                    local myHRP = myChar:FindFirstChild("HumanoidRootPart")
-                    if myHRP then myHRP.CFrame = h.CFrame * CFrame.new(0,2,0) end
-                end
+        if obj:IsA("Tool") then
+            local n = string.lower(obj.Name)
+            if string.find(n, "gun", 1, true)
+                or string.find(n, "revolver", 1, true)
+                or string.find(n, "colt", 1, true)
+                or string.find(n, "pistol", 1, true)
+                or string.find(n, "handgun", 1, true) then
+                found = obj
+                break
             end
-            break
+        end
+    end
+
+    if found then
+        local handle = found:FindFirstChild("Handle") or found:FindFirstChildWhichIsA("BasePart", true)
+        if handle then
+            local myChar = LocalPlayer.Character
+            if myChar then
+                local myHRP = myChar:FindFirstChild("HumanoidRootPart")
+                if myHRP then myHRP.CFrame = handle.CFrame * CFrame.new(0,2,0) end
+            end
         end
     end
 end
@@ -364,21 +432,33 @@ local function TeleportPlayerToMe(tp)
 end
 
 -- ==================== NOCLIP ====================
-local NoclipConn = nil
-local function ToggleNoclip(state)
-    Config.NoclipEnabled = state
-    if NoclipConn then NoclipConn:Disconnect() NoclipConn = nil end
-    if state then
-        NoclipConn = RunService.Stepped:Connect(function()
-            local char = LocalPlayer.Character
-            if char then
-                for _, part in ipairs(char:GetDescendants()) do
-                    if part:IsA("BasePart") then part.CanCollide = false end
-                end
-            end
-        end)
+local function ApplyNoclipStep()
+    local char = LocalPlayer.Character
+    if not char then return end
+    for _, part in ipairs(char:GetDescendants()) do
+        if part:IsA("BasePart") then part.CanCollide = false end
     end
 end
+
+local function DisconnectNoclip()
+    if NoclipConn then
+        NoclipConn:Disconnect()
+        NoclipConn = nil
+    end
+end
+
+local function ToggleNoclip(state)
+    Config.NoclipEnabled = state
+    DisconnectNoclip()
+    if state then
+        NoclipConn = RunService.Stepped:Connect(function()
+            pcall(ApplyNoclipStep)
+        end)
+        pcall(ApplyNoclipStep)
+    end
+end
+-- MM2 Pentest Script v6 - Part 3/3
+-- GUI, input, loops, init
 
 -- ==================== GUI ====================
 local function CreateGUI()
@@ -724,7 +804,6 @@ local function CreateGUI()
     end
     RefreshAllTexts()
 
-    -- Show button (top center)
     local ShowBtn = Instance.new("TextButton")
     ShowBtn.Size = UDim2.new(0,80,0,32)
     ShowBtn.Position = UDim2.new(0.5,-40,0,10)
@@ -752,7 +831,6 @@ local function CreateGUI()
         ShowBtn.Visible = false
     end)
 
-    -- Mobile drag
     local dragging, dragStart, startPos = false, nil, nil
     TitleBar.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
@@ -773,7 +851,6 @@ local function CreateGUI()
         end
     end)
 
-    -- Mobile aimbot button
     local ab = Instance.new("TextButton")
     ab.Size = UDim2.new(0,70,0,70)
     ab.Position = UDim2.new(1,-90,0,150)
@@ -846,7 +923,7 @@ RunService.RenderStepped:Connect(function()
     if FOVCircle then
         SafeSet(FOVCircle, "Position", Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2))
         SafeSet(FOVCircle, "Radius", Config.AimbotFOV)
-        SafeSet(FOVCircle, "Visible", Config.ShowFOV and Config.AimbotEnabled)
+        SafeSet(FOVCircle, "Visible", Config.ShowFOV)
     end
     UpdateAimbot()
 end)
@@ -884,6 +961,13 @@ LocalPlayer.CharacterAdded:Connect(function()
     task.wait(1)
     if Config.NoclipEnabled then ToggleNoclip(true) end
     ForceRefreshESP()
+end)
+
+workspace.ChildAdded:Connect(function(child)
+    if child:IsA("Model") and child:FindFirstChildOfClass("Humanoid") then
+        task.wait(0.3)
+        if Config.NoclipEnabled then pcall(ApplyNoclipStep) end
+    end
 end)
 
 task.delay(1, function() pcall(ForceRefreshESP) end)
