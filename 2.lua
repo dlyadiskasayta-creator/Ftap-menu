@@ -1100,3 +1100,74 @@ end
 
 GUI.Create()
 GUI.UpdateTabs()
+-- ============================
+-- ПЛАВАЮЩАЯ КНОПКА
+-- ============================
+local FloatBtn = Instance.new("TextButton")
+FloatBtn.Name = "FloatBtn"
+FloatBtn.Size = UDim2.new(0, 48, 0, 48)
+FloatBtn.Position = UDim2.new(1, -70, 0.5, -24)
+FloatBtn.BackgroundColor3 = Palette.MenuAccent
+FloatBtn.Text = "LF"
+FloatBtn.TextColor3 = Color3.new(1,1,1)
+FloatBtn.Font = Enum.Font.GothamBold
+FloatBtn.TextSize = 16
+FloatBtn.BorderSizePixel = 0
+FloatBtn.AutoButtonColor = false
+FloatBtn.Active = true
+FloatBtn.Parent = UI.ScreenGui
+Instance.new("UICorner", FloatBtn).CornerRadius = UDim.new(1, 0)
+
+local FloatStroke = Instance.new("UIStroke", FloatBtn)
+FloatStroke.Color = Color3.fromRGB(255,255,255)
+FloatStroke.Thickness = 1
+FloatStroke.Transparency = 0.5
+
+local fDrag = { pending=false, dragging=false, startPos=Vector2.zero, offset=Vector2.zero }
+
+FloatBtn.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        fDrag.pending = true
+        fDrag.dragging = false
+        fDrag.startPos = UserInputService:GetMouseLocation()
+        fDrag.offset = fDrag.startPos - Vector2.new(FloatBtn.AbsolutePosition.X, FloatBtn.AbsolutePosition.Y)
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        if fDrag.pending then
+            if not fDrag.dragging then
+                -- Тап — открыть/закрыть меню
+                if GUI.Frame.Visible then
+                    GUI.Frame.Visible = false
+                else
+                    GUI.Frame.Visible = true
+                end
+            end
+            fDrag.pending = false
+            fDrag.dragging = false
+        end
+    end
+end)
+
+RunService.RenderStepped:Connect(function()
+    if fDrag.pending then
+        local mp = UserInputService:GetMouseLocation()
+        if (mp - fDrag.startPos).Magnitude > 8 then
+            fDrag.dragging = true
+        end
+        if fDrag.dragging then
+            local newX = mp.X - fDrag.offset.X
+            local newY = mp.Y - fDrag.offset.Y
+            local cam = Workspace.CurrentCamera
+            if cam then
+                local vs = cam.ViewportSize
+                local bs = FloatBtn.AbsoluteSize
+                newX = math.clamp(newX, 0, vs.X - bs.X)
+                newY = math.clamp(newY, 0, vs.Y - bs.Y)
+                FloatBtn.Position = UDim2.new(0, newX, 0, newY)
+            end
+        end
+    end
+end)
