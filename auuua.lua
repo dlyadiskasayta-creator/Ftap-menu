@@ -1,5 +1,16 @@
-local Players=game:GetService("Players")local RunService=game:GetService("RunService")local UserInputService=game:GetService("UserInputService")local Workspace=game:GetService("Workspace")local GuiService=game:GetService("GuiService")local TweenService=game:GetService("TweenService")
-local LocalPlayer=Players.LocalPlayer local Mouse=LocalPlayer:GetMouse()
+local Players=game:GetService("Players")
+local RunService=game:GetService("RunService")
+local UserInputService=game:GetService("UserInputService")
+local Workspace=game:GetService("Workspace")
+local GuiService=game:GetService("GuiService")
+local TweenService=game:GetService("TweenService")
+
+local LocalPlayer=Players.LocalPlayer
+if not LocalPlayer then
+    LocalPlayer=Players:GetPropertyChangedSignal("LocalPlayer"):Wait()
+    LocalPlayer=Players.LocalPlayer
+end
+local Mouse=LocalPlayer:GetMouse()
 local Config={ESP_Enabled=false,ESP_Boxes=true,ESP_Names=true,ESP_Distance=true,ESP_Skeleton=true,ESP_Health=true,ESP_TeamCheck=true,ESP_MaxDist=2000,ESP_AimDir=true,ESP_LookingAtYou=true,ESP_Tracers=false,ESP_FPV=false,RADAR_Enabled=false,RADAR_Size=120,AIM_Enabled=false,AIM_FOV=150,AIM_ShowFOV=true,AIM_TeamCheck=true,AIM_VisibilityCheck=true,AIM_Prediction=true,AIM_PredictionAmount=0.13,AIM_ForceHeadshots=true,AIM_Hitbox="Head",AIM_FPV=false,AIM_LegitMode=true,AIM_HumanError=0.05,AIM_MissChance=5,AIM_RandomSmooth=true,AIM_RandomDelay=true,AIM_FOVJitter=true,DESYNC_Enabled=false,DESYNC_Amount=2,TRIGGER_Enabled=false,TRIGGER_Delay=50,TRIGGER_TeamCheck=true,MENU_Open=true,MENU_Tab=1}
 local Tuning={TargetRefreshRate=0.3,VisibilityRefreshRate=0.2,TeamRefreshRate=3.0,FPVRefreshRate=2.0,BoxWidthRatio=0.6,HealthBarWidth=4,HealthBarOffset=6,NameOffset=18,DistOffset=4,AimLineLength=15,LookingThreshold=0.85,FPVClusterDist=100,RadarRange=150,RadarDotSize=6,TriggerRadius=50}
 local Palette={Enemy=Color3.fromRGB(255,50,50),EnemyVisible=Color3.fromRGB(0,255,0),Team=Color3.fromRGB(0,150,255),Skeleton=Color3.fromRGB(255,255,255),SkeletonVisible=Color3.fromRGB(0,255,0),LookingAtYou=Color3.fromRGB(255,255,0),AimDir=Color3.fromRGB(255,150,0),FPV=Color3.fromRGB(255,0,255),Tracer=Color3.fromRGB(255,100,100),HealthHigh=Color3.fromRGB(0,255,0),HealthMid=Color3.fromRGB(255,255,0),HealthLow=Color3.fromRGB(255,0,0),HealthBg=Color3.fromRGB(40,40,40),RadarBg=Color3.fromRGB(20,20,20),RadarBorder=Color3.fromRGB(255,50,50),RadarYou=Color3.fromRGB(0,255,0),RadarEnemy=Color3.fromRGB(255,50,50),MenuBg=Color3.fromRGB(15,15,20),MenuPanel=Color3.fromRGB(22,22,30),MenuBorder=Color3.fromRGB(60,60,75),MenuAccent=Color3.fromRGB(110,140,255),MenuText=Color3.fromRGB(230,230,240),MenuTextDim=Color3.fromRGB(150,150,165),MenuOn=Color3.fromRGB(100,220,120),MenuOff=Color3.fromRGB(60,60,70),FOV_Circle=Color3.fromRGB(255,255,255),FOV_Active=Color3.fromRGB(255,50,50)}
